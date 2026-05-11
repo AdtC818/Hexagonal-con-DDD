@@ -5,14 +5,14 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - 22181:2181
+      - "22181:2181"
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
       - zookeeper
     ports:
-      - 29092:29092
+      - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -21,41 +21,167 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
-  mysql:
+  # ── BASE DE DATOS POR BOUNDED CONTEXT ──────────────────────────
+  orders-db:
     image: mysql:8.0
     ports:
-      - 3307:3306
+      - "3308:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=uptc2026
-      - MYSQL_DATABASE=orders
-      - MYSQL_USER=orders
-      - MYSQL_PASSWORD=uptc2026
+      MYSQL_ROOT_PASSWORD: uptc2026
+      MYSQL_DATABASE: orders_db
+      MYSQL_USER: orders_user
+      MYSQL_PASSWORD: uptc2026
     volumes:
-      - mysql_data:/var/lib/mysql
+      - orders_data:/var/lib/mysql
+      - ./db-init/orders_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  edakafka:
+  payments-db:
+    image: mysql:8.0
+    ports:
+      - "3309:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: uptc2026
+      MYSQL_DATABASE: payments_db
+      MYSQL_USER: payments_user
+      MYSQL_PASSWORD: uptc2026
+    volumes:
+      - payments_data:/var/lib/mysql
+      - ./db-init/payments_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  shipping-db:
+    image: mysql:8.0
+    ports:
+      - "3310:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: uptc2026
+      MYSQL_DATABASE: shipping_db
+      MYSQL_USER: shipping_user
+      MYSQL_PASSWORD: uptc2026
+    volumes:
+      - shipping_data:/var/lib/mysql
+      - ./db-init/shipping_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  inventory-db:
+    image: mysql:8.0
+    ports:
+      - "3311:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: uptc2026
+      MYSQL_DATABASE: inventory_db
+      MYSQL_USER: inventory_user
+      MYSQL_PASSWORD: uptc2026
+    volumes:
+      - inventory_data:/var/lib/mysql
+      - ./db-init/inventory_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── SERVICIOS ──────────────────────────────────────────────────
+  orderservice:
     build:
-      context: ./edakafka
+      context: ./orderservice
       dockerfile: Dockerfile
     ports:
-      - 8080:8080
+      - "8082:8082"
     depends_on:
-      - mysql
-      - kafka
+      orders-db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/orders?serverTimezone=GMT-5
-      - SPRING_DATASOURCE_USERNAME=orders
-      - SPRING_DATASOURCE_PASSWORD=uptc2026
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:mysql://orders-db:3306/orders_db?serverTimezone=GMT-5
+      SPRING_DATASOURCE_USERNAME: orders_user
+      SPRING_DATASOURCE_PASSWORD: uptc2026
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  paymentservice:
+    build:
+      context: ./paymentservice
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8084"
+    depends_on:
+      payments-db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://payments-db:3306/payments_db?serverTimezone=GMT-5
+      SPRING_DATASOURCE_USERNAME: payments_user
+      SPRING_DATASOURCE_PASSWORD: uptc2026
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  shippingservice:
+    build:
+      context: ./shippingservice
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    depends_on:
+      shipping-db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://shipping-db:3306/shipping_db?serverTimezone=GMT-5
+      SPRING_DATASOURCE_USERNAME: shipping_user
+      SPRING_DATASOURCE_PASSWORD: uptc2026
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  inventoryservice:
+    build:
+      context: ./inventoryservice
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8085"
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://inventory-db:3306/inventory_db?serverTimezone=GMT-5
+      SPRING_DATASOURCE_USERNAME: inventory_user
+      SPRING_DATASOURCE_PASSWORD: uptc2026
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   gateway:
     build:
       context: ./gateway
       dockerfile: Dockerfile
     ports:
-      - 8081:8081
+      - "8081:8081"
     depends_on:
-      - edakafka
+      - orderservice
+      - paymentservice
+      - shippingservice
+      - inventoryservice
+    environment:
+      SERVICES_ORDER_URL: http://orderservice:8082
+      SERVICES_PAYMENT_URL: http://paymentservice:8084
+      SERVICES_SHIPPING_URL: http://shippingservice:8083
+      SERVICES_INVENTORY_URL: http://inventoryservice:8085
 
 volumes:
-  mysql_data:
+  orders_data:
+  payments_data:
+  shipping_data:
+  inventory_data:

@@ -4,8 +4,17 @@ server:
 spring:
   application:
     name: api-gateway
-  gateway:
-    backend-url: http://edakafka:8080
+
+# URLs de los microservicios por bounded context
+services:
+  order:
+    url: http://localhost:8082
+  payment:
+    url: http://localhost:8084
+  shipping:
+    url: http://localhost:8083
+  inventory:
+    url: http://localhost:8085
 
 management:
   endpoints:

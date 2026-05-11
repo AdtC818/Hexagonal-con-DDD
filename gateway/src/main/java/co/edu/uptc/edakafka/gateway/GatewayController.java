@@ -4,57 +4,106 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
-
 import reactor.core.publisher.Mono;
 
 @RestController
+@RequestMapping("/api")
 public class GatewayController {
 
     private final WebClient webClient;
 
-    @Value("${spring.gateway.backend-url:http://edakafka:8080}")
-    private String backendUrl;
+    @Value("${services.order.url}")
+    private String orderServiceUrl;
+
+    @Value("${services.payment.url}")
+    private String paymentServiceUrl;
+
+    @Value("${services.shipping.url}")
+    private String shippingServiceUrl;
+
+    @Value("${services.inventory.url}")
+    private String inventoryServiceUrl;
 
     public GatewayController(WebClient.Builder webClientBuilder) {
         this.webClient = webClientBuilder.build();
     }
 
-    @RequestMapping(value = {"/customer/**", "/api/logins/**"}, method = {
-            RequestMethod.GET,
-            RequestMethod.POST,
-            RequestMethod.PUT,
-            RequestMethod.DELETE,
-            RequestMethod.PATCH
+    // ── ORDERS bounded context ─────────────────────────────────────
+    @RequestMapping(value = "/orders/**", method = {
+            RequestMethod.GET, RequestMethod.POST,
+            RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH
     })
-    public Mono<ResponseEntity<byte[]>> proxy(ServerWebExchange exchange,
-                                              @RequestBody(required = false) Mono<byte[]> body) {
+    public Mono<ResponseEntity<byte[]>> proxyOrders(
+            ServerWebExchange exchange,
+            @RequestBody(required = false) Mono<byte[]> body) {
+        return proxy(exchange, body, orderServiceUrl);
+    }
+
+    // ── PAYMENTS bounded context ───────────────────────────────────
+    @RequestMapping(value = "/payments/**", method = {
+            RequestMethod.GET, RequestMethod.POST,
+            RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH
+    })
+    public Mono<ResponseEntity<byte[]>> proxyPayments(
+            ServerWebExchange exchange,
+            @RequestBody(required = false) Mono<byte[]> body) {
+        return proxy(exchange, body, paymentServiceUrl);
+    }
+
+    // ── SHIPPING bounded context ───────────────────────────────────
+    @RequestMapping(value = "/shipping/**", method = {
+            RequestMethod.GET, RequestMethod.POST,
+            RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH
+    })
+    public Mono<ResponseEntity<byte[]>> proxyShipping(
+            ServerWebExchange exchange,
+            @RequestBody(required = false) Mono<byte[]> body) {
+        return proxy(exchange, body, shippingServiceUrl);
+    }
+
+    // ── INVENTORY bounded context ──────────────────────────────────
+    @RequestMapping(value = "/inventory/**", method = {
+            RequestMethod.GET, RequestMethod.POST,
+            RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH
+    })
+    public Mono<ResponseEntity<byte[]>> proxyInventory(
+            ServerWebExchange exchange,
+            @RequestBody(required = false) Mono<byte[]> body) {
+        return proxy(exchange, body, inventoryServiceUrl);
+    }
+
+    // ── Lógica de proxy compartida ─────────────────────────────────
+    private Mono<ResponseEntity<byte[]>> proxy(
+            ServerWebExchange exchange,
+            Mono<byte[]> body,
+            String targetBaseUrl) {
 
         HttpMethod method = exchange.getRequest().getMethod();
         String path = exchange.getRequest().getURI().getRawPath();
         String query = exchange.getRequest().getURI().getRawQuery();
-        String url = backendUrl + path + (query != null ? "?" + query : "");
+
+        // Elimina el prefijo /api del path antes de reenviar
+        String strippedPath = path.replaceFirst("^/api", "");
+        String url = targetBaseUrl + strippedPath + (query != null ? "?" + query : "");
 
         if (method == HttpMethod.GET || method == HttpMethod.DELETE) {
             return webClient.method(method)
                     .uri(url)
                     .headers(headers -> copyHeaders(exchange.getRequest().getHeaders(), headers))
-                    .exchangeToMono(clientResponse -> clientResponse.toEntity(byte[].class));
+                    .exchangeToMono(r -> r.toEntity(byte[].class));
         }
 
-        Mono<byte[]> requestBody = (body != null ? body : Mono.<byte[]>empty());
+        Mono<byte[]> requestBody = body != null ? body : Mono.empty();
         return requestBody
                 .defaultIfEmpty(new byte[0])
                 .flatMap(payload -> webClient.method(method)
                         .uri(url)
                         .headers(headers -> copyHeaders(exchange.getRequest().getHeaders(), headers))
                         .bodyValue(payload)
-                        .exchangeToMono(clientResponse -> clientResponse.toEntity(byte[].class)));
+                        .exchangeToMono(r -> r.toEntity(byte[].class)));
     }
 
     private void copyHeaders(HttpHeaders source, HttpHeaders target) {
