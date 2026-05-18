@@ -1,6 +1,6 @@
 package co.edu.uptc.orderservice.infrastructure.messaging;
 
-import co.edu.uptc.orderservice.application.usecase.CancelOrderUseCase;
+import co.edu.uptc.orderservice.application.services.OrderService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
@@ -11,11 +11,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class KafkaOrderEventConsumer {
 
-    private final CancelOrderUseCase cancelOrderUseCase;
+    private final OrderService orderService;
     private final ObjectMapper objectMapper;
 
-    public KafkaOrderEventConsumer(CancelOrderUseCase cancelOrderUseCase) {
-        this.cancelOrderUseCase = cancelOrderUseCase;
+    public KafkaOrderEventConsumer(OrderService orderService) {
+        this.orderService = orderService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -35,7 +35,11 @@ public class KafkaOrderEventConsumer {
         try {
             JsonNode rootNode = objectMapper.readTree(payload);
             String orderId = rootNode.get("orderId").asText();
-            cancelOrderUseCase.execute(orderId);
+            orderService.findOrderById(orderId).ifPresent(order -> {
+                order.cancel();
+                orderService.updateOrder(orderId, order);
+                System.out.println("[ORDER USE CASE] Orden " + orderId + " -> status changed to CANCELLED");
+            });
         } catch (Exception e) {
             System.err.println("[KAFKA CONSUMER] Error en compensaciÃ³n: " + e.getMessage());
         }
