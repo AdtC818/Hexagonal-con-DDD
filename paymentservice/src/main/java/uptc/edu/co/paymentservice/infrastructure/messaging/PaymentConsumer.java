@@ -1,39 +1,40 @@
-package uptc.edu.co.paymentservice.service;
+package uptc.edu.co.paymentservice.infrastructure.messaging;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
-import uptc.edu.co.paymentservice.model.OrderDTO;
+import org.springframework.stereotype.Component;
+import uptc.edu.co.paymentservice.application.services.PaymentService;
+import uptc.edu.co.paymentservice.domain.model.OrderDTO;
 import uptc.edu.co.paymentservice.utils.JsonUtils;
 
-@Service
+@Component
 public class PaymentConsumer {
-    @Autowired
-    private PaymentService paymentService; 
-    
-    @Autowired
-    private KafkaTemplate<String, String> kafkaTemplate;
-    
-    private JsonUtils jsonUtils = new JsonUtils();
+
+    private final PaymentService paymentService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final JsonUtils jsonUtils;
+
+    public PaymentConsumer(PaymentService paymentService, KafkaTemplate<String, String> kafkaTemplate, JsonUtils jsonUtils) {
+        this.paymentService = paymentService;
+        this.kafkaTemplate = kafkaTemplate;
+        this.jsonUtils = jsonUtils;
+    }
 
     @KafkaListener(topics = "order_created_topic", groupId = "payment_group_new_v1")
     public void handleOrderCreated(ConsumerRecord<String, String> record) {
-        
         String message = record.value();
         OrderDTO order = jsonUtils.fromJson(message, OrderDTO.class);
         
         if (order.getTotalPrice() < 500) {
-            paymentService.savePayment(order, "SUCCESS");
+            paymentService.createPayment(order, "SUCCESS");
             
-            // Re-enviamos el objeto completo (incluyendo el productName)
             String outMessage = jsonUtils.toJson(order);
             kafkaTemplate.send("payment_processed_topic", outMessage);
             
             System.out.println("[SAGA] Pago aprobado para producto: " + order.getProductName());
         } else {
-            paymentService.savePayment(order, "REJECTED");
+            paymentService.createPayment(order, "REJECTED");
             
             String outMessage = jsonUtils.toJson(order);
             kafkaTemplate.send("payment_failed_topic", outMessage);
@@ -47,7 +48,7 @@ public class PaymentConsumer {
         String message = record.value();
         OrderDTO order = jsonUtils.fromJson(message, OrderDTO.class);
         
-        paymentService.updateStatus(order.getOrderId(), "REFUNDED");
+        paymentService.updatePaymentStatus(order.getOrderId(), "REFUNDED");
         
         String outMessage = jsonUtils.toJson(order);
         kafkaTemplate.send("order_cancel_topic", outMessage);
