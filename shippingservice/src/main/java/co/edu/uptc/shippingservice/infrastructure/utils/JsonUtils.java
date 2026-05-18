@@ -1,4 +1,4 @@
-package co.edu.uptc.shippingservice.utils;
+package co.edu.uptc.shippingservice.infrastructure.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
