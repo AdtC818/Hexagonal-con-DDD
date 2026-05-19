@@ -175,6 +175,7 @@ services:
       - inventoryservice
       - edakafka
     environment:
+      SERVICES_EDA_URL: http://edakafka:8080
       SERVICES_ORDER_URL: http://orderservice:8082
       SERVICES_PAYMENT_URL: http://paymentservice:8084
       SERVICES_SHIPPING_URL: http://shippingservice:8083
