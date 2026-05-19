@@ -27,6 +27,9 @@ public class GatewayController {
     @Value("${services.inventory.url}")
     private String inventoryServiceUrl;
 
+    @Value("${services.eda.url}")
+    private String edaServiceUrl;
+
     public GatewayController(WebClient.Builder webClientBuilder) {
         this.webClient = webClientBuilder.build();
     }
@@ -73,6 +76,17 @@ public class GatewayController {
             ServerWebExchange exchange,
             @RequestBody(required = false) Mono<byte[]> body) {
         return proxy(exchange, body, inventoryServiceUrl);
+    }
+
+    // ── CUSTOMER (edakafka) bounded context ───────────────────────
+    @RequestMapping(value = "/customer/**", method = {
+            RequestMethod.GET, RequestMethod.POST,
+            RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH
+    })
+    public Mono<ResponseEntity<byte[]>> proxyCustomer(
+            ServerWebExchange exchange,
+            @RequestBody(required = false) Mono<byte[]> body) {
+        return proxy(exchange, body, edaServiceUrl);
     }
 
     // ── Lógica de proxy compartida ─────────────────────────────────

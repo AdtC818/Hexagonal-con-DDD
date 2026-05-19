@@ -140,6 +140,28 @@ services:
         limits:
           memory: 256M
 
+  edakafka:
+    build:
+      context: ./edakafka
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/eda_db?serverTimezone=GMT-5
+      SPRING_DATASOURCE_USERNAME: eda_user
+      SPRING_DATASOURCE_PASSWORD: uptc2026
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JAVA_OPTS: "-Xmx180m -Xms64m"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
   gateway:
     build:
       context: ./gateway
@@ -151,6 +173,7 @@ services:
       - paymentservice
       - shippingservice
       - inventoryservice
+      - edakafka
     environment:
       SERVICES_ORDER_URL: http://orderservice:8082
       SERVICES_PAYMENT_URL: http://paymentservice:8084

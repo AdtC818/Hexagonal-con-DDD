@@ -21,3 +21,10 @@ CREATE USER IF NOT EXISTS 'inventory_user'@'%' IDENTIFIED BY 'uptc2026';
 GRANT ALL PRIVILEGES ON inventory_db.* TO 'inventory_user'@'%';
 
 FLUSH PRIVILEGES;
+
+-- Usuario para edakafka
+CREATE DATABASE IF NOT EXISTS eda_db;
+CREATE USER IF NOT EXISTS 'eda_user'@'%' IDENTIFIED BY 'uptc2026';
+GRANT ALL PRIVILEGES ON eda_db.* TO 'eda_user'@'%';
+
+FLUSH PRIVILEGES;
